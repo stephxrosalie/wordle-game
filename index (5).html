@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #121213;
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    header {
+      width: 100%;
+      max-width: 500px;
+      border-bottom: 1px solid #3a3a3c;
+      padding: 14px 0;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.2rem;
+      text-transform: uppercase;
+    }
+
+    #message {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin: 10px 0 4px;
+      color: #fff;
+    }
+
+    #board {
+      display: grid;
+      grid-template-rows: repeat(6, 1fr);
+      gap: 6px;
+      padding: 10px 0;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(5, 62px);
+      gap: 6px;
+    }
+
+    .tile {
+      width: 62px;
+      height: 62px;
+      border: 2px solid #3a3a3c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      transition: background 0.3s, border-color 0.3s;
+      user-select: none;
+    }
+
+    .tile.filled {
+      border-color: #565758;
+      animation: pop 0.1s ease;
+    }
+
+    .tile.correct  { background: #538d4e; border-color: #538d4e; }
+    .tile.present  { background: #b59f3b; border-color: #b59f3b; }
+    .tile.absent   { background: #3a3a3c; border-color: #3a3a3c; }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%,60% { transform: translateX(-6px); }
+      40%,80% { transform: translateX(6px); }
+    }
+
+    .row.shake { animation: shake 0.4s ease; }
+
+    @keyframes flip {
+      0%   { transform: rotateX(0deg); }
+      50%  { transform: rotateX(-90deg); }
+      100% { transform: rotateX(0deg); }
+    }
+
+    .tile.flip { animation: flip 0.5s ease forwards; }
+
+    #keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 14px 0 20px;
+    }
+
+    .kb-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .key {
+      height: 58px;
+      min-width: 43px;
+      padding: 0 6px;
+      border: none;
+      border-radius: 4px;
+      background: #818384;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .key.wide { min-width: 65px; font-size: 0.75rem; }
+    .key.correct  { background: #538d4e; }
+    .key.present  { background: #b59f3b; }
+    .key.absent   { background: #3a3a3c; }
+
+    #play-again {
+      display: none;
+      margin-top: 10px;
+      padding: 12px 28px;
+      background: #538d4e;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.1rem;
+    }
+
+    #play-again:hover { background: #6aaf5e; }
+  </style>
+</head>
+<body>
+
+<header><h1>Wordle</h1></header>
+
+<div id="message"></div>
+
+<div id="board"></div>
+
+<div id="keyboard">
+  <div class="kb-row" id="row1"></div>
+  <div class="kb-row" id="row2"></div>
+  <div class="kb-row" id="row3"></div>
+</div>
+
+<button id="play-again" onclick="initGame()">Play Again</button>
+
+<script>
+  const WORDS = [
+    "FUNNY","QUACK","ZAPPY","GOOFY","JERKY","CLOWN","WORLD","DISCO",
+    "GRAPE","MANGO","PEACH","HEART","TOOTH","SILLY","FUZZY","DREAM",
+    "CLOUD","TRACK","LIGHT","MONEY","GLUED","MAJOR","BRAVE","CRISP",
+    "FLINT","GLOBE","GROAN","HANDY","IVORY","JAZZY","KNACK","LEMON",
+    "MOODY","NOVEL","OLIVE","PLUMB","QUERY","RAINY","SPUNK","THORN",
+    "ULCER","VENOM","WALTZ","XYLEM","YACHT","ZESTY","BLAND","CHAMP",
+    "DEPOT","EPOCH","FLAIR","GUSTO","HINGE","IRONY","JOUST","KAYAK",
+    "LUNAR","MIXED","NIFTY","OPTIC","PIXEL","QUIRK","RISKY","STOMP"
+  ];
+
+  const KB_ROWS = [
+    ['Q','W','E','R','T','Y','U','I','O','P'],
+    ['A','S','D','F','G','H','J','K','L'],
+    ['ENTER','Z','X','C','V','B','N','M','⌫']
+  ];
+
+  let answer, currentRow, currentCol, gameOver, board;
+
+  function initGame() {
+    answer = WORDS[Math.floor(Math.random() * WORDS.length)];
+    currentRow = 0;
+    currentCol = 0;
+    gameOver = false;
+    board = Array.from({ length: 6 }, () => Array(5).fill(''));
+
+    document.getElementById('message').textContent = '';
+    document.getElementById('play-again').style.display = 'none';
+
+    buildBoard();
+    buildKeyboard();
+  }
+
+  function buildBoard() {
+    const boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    for (let r = 0; r < 6; r++) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.id = `row-${r}`;
+      for (let c = 0; c < 5; c++) {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.id = `tile-${r}-${c}`;
+        row.appendChild(tile);
+      }
+      boardEl.appendChild(row);
+    }
+  }
+
+  function buildKeyboard() {
+    KB_ROWS.forEach((keys, i) => {
+      const rowEl = document.getElementById(`row${i + 1}`);
+      rowEl.innerHTML = '';
+      keys.forEach(k => {
+        const btn = document.createElement('button');
+        btn.className = 'key' + (k === 'ENTER' || k === '⌫' ? ' wide' : '');
+        btn.textContent = k;
+        btn.id = `key-${k}`;
+        btn.addEventListener('click', () => handleKey(k));
+        rowEl.appendChild(btn);
+      });
+    });
+  }
+
+  function handleKey(key) {
+    if (gameOver) return;
+
+    if (key === '⌫' || key === 'BACKSPACE') {
+      deleteLetter();
+    } else if (key === 'ENTER') {
+      submitGuess();
+    } else if (/^[A-Z]$/.test(key)) {
+      addLetter(key);
+    }
+  }
+
+  function addLetter(letter) {
+    if (currentCol >= 5) return;
+    board[currentRow][currentCol] = letter;
+    const tile = document.getElementById(`tile-${currentRow}-${currentCol}`);
+    tile.textContent = letter;
+    tile.classList.add('filled');
+    currentCol++;
+  }
+
+  function deleteLetter() {
+    if (currentCol <= 0) return;
+    currentCol--;
+    board[currentRow][currentCol] = '';
+    const tile = document.getElementById(`tile-${currentRow}-${currentCol}`);
+    tile.textContent = '';
+    tile.classList.remove('filled');
+  }
+
+  function submitGuess() {
+    if (currentCol < 5) {
+      shakeRow(currentRow);
+      showMessage('Not enough letters');
+      return;
+    }
+
+    const guess = board[currentRow].join('');
+    const result = scoreGuess(guess);
+    revealRow(currentRow, result, guess);
+  }
+
+  function scoreGuess(guess) {
+    const result = Array(5).fill('absent');
+    const answerArr = answer.split('');
+    const used = Array(5).fill(false);
+
+    // Pass 1: correct
+    for (let i = 0; i < 5; i++) {
+      if (guess[i] === answer[i]) {
+        result[i] = 'correct';
+        used[i] = true;
+      }
+    }
+    // Pass 2: present
+    for (let i = 0; i < 5; i++) {
+      if (result[i] === 'correct') continue;
+      for (let j = 0; j < 5; j++) {
+        if (!used[j] && guess[i] === answerArr[j]) {
+          result[i] = 'present';
+          used[j] = true;
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  function revealRow(row, result, guess) {
+    const tiles = [];
+    for (let c = 0; c < 5; c++) {
+      tiles.push(document.getElementById(`tile-${row}-${c}`));
+    }
+
+    tiles.forEach((tile, i) => {
+      setTimeout(() => {
+        tile.classList.add('flip');
+        setTimeout(() => {
+          tile.classList.add(result[i]);
+          updateKey(guess[i], result[i]);
+        }, 250);
+      }, i * 100);
+    });
+
+    const delay = 5 * 100 + 500;
+    setTimeout(() => {
+      if (result.every(r => r === 'correct')) {
+        const msgs = ['Genius!', 'Magnificent!', 'Impressive!', 'Splendid!', 'Great!', 'Phew!'];
+        showMessage(msgs[row] || 'Nice!');
+        gameOver = true;
+        document.getElementById('play-again').style.display = 'inline-block';
+      } else if (row === 5) {
+        showMessage(`The word was ${answer}`);
+        gameOver = true;
+        document.getElementById('play-again').style.display = 'inline-block';
+      } else {
+        currentRow++;
+        currentCol = 0;
+      }
+    }, delay);
+  }
+
+  function updateKey(letter, status) {
+    const key = document.getElementById(`key-${letter}`);
+    if (!key) return;
+    const priority = { correct: 3, present: 2, absent: 1 };
+    const current = key.classList.contains('correct') ? 3
+                  : key.classList.contains('present') ? 2
+                  : key.classList.contains('absent') ? 1 : 0;
+    if (priority[status] > current) {
+      key.classList.remove('correct', 'present', 'absent');
+      key.classList.add(status);
+    }
+  }
+
+  function shakeRow(row) {
+    const rowEl = document.getElementById(`row-${row}`);
+    rowEl.classList.add('shake');
+    rowEl.addEventListener('animationend', () => rowEl.classList.remove('shake'), { once: true });
+  }
+
+  function showMessage(msg) {
+    const el = document.getElementById('message');
+    el.textContent = msg;
+    if (msg && !gameOver) {
+      setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2000);
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    const k = e.key.toUpperCase();
+    if (k === 'BACKSPACE') handleKey('BACKSPACE');
+    else if (k === 'ENTER') handleKey('ENTER');
+    else if (/^[A-Z]$/.test(k)) handleKey(k);
+  });
+
+  initGame();
+</script>
+</body>
+</html>
